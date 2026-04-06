@@ -14,3 +14,10 @@ CyberGuard is a modern Streamlit-based cybersecurity web app that reviews websit
 ```bash
 pip install -r requirements.txt
 streamlit run cyberguard_streamlit_app.py
+
+## 4. Test it locally first
+Open terminal in that folder and run:
+
+```bash
+pip install -r requirements.txt
+streamlit run cyberguard_streamlit_app.py
