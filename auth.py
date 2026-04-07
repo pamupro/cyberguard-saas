@@ -1,13 +1,22 @@
 """
 CyberGuard – Authentication utilities
 SQLite-backed user store with bcrypt password hashing.
+Falls back to PBKDF2-HMAC-SHA256 (stdlib) if bcrypt is unavailable.
 """
 
+import hashlib
+import os
 import sqlite3
 from contextlib import closing
 from datetime import datetime
 
-import bcrypt
+# Prefer bcrypt; fall back to stdlib PBKDF2 so the app always starts.
+try:
+    import bcrypt as _bcrypt
+    _USE_BCRYPT = True
+except ImportError:
+    _bcrypt = None          # type: ignore
+    _USE_BCRYPT = False
 
 DB_FILE = "cyberguard.db"
 
@@ -33,16 +42,29 @@ def init_db() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers  (bcrypt preferred; PBKDF2 fallback)
 # ---------------------------------------------------------------------------
 
 def _hash(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+    if _USE_BCRYPT:
+        return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
+    # PBKDF2 fallback: "pbkdf2$<hex-salt>$<hex-dk>"
+    salt = os.urandom(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 260_000)
+    return f"pbkdf2${salt.hex()}${dk.hex()}"
 
 
-def _verify(password: str, hashed: str) -> bool:
+def _verify(password: str, stored: str) -> bool:
     try:
-        return bcrypt.checkpw(password.encode(), hashed.encode())
+        if stored.startswith("pbkdf2$"):
+            _, salt_hex, dk_hex = stored.split("$")
+            salt = bytes.fromhex(salt_hex)
+            dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 260_000)
+            return dk.hex() == dk_hex
+        # bcrypt hash
+        if _USE_BCRYPT:
+            return _bcrypt.checkpw(password.encode(), stored.encode())
+        return False
     except Exception:
         return False
 
